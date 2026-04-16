@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.core.celery_app import celery_app
-from app.db.session import SessionLocal
+from app.db.session import _get_session_factory
 from app.models.alert import Alert
 from app.models.company import Company
 from app.models.enums import (
@@ -176,7 +176,7 @@ def _process_nadir_complete(db: Session, company: Company):
 @celery_app.task(name="app.services.nadir_agent.run_daily_pipeline")
 def run_daily_pipeline():
     """Main daily pipeline — staged execution per Change 8."""
-    db = SessionLocal()
+    db = _get_session_factory()()
     start_time = time.time()
     errors: List[Dict] = []
     new_alerts = 0
@@ -294,7 +294,7 @@ def run_daily_pipeline():
 
 @celery_app.task(name="app.services.nadir_agent.run_signal_collector")
 def run_signal_collector(signal_type: str):
-    db = SessionLocal()
+    db = _get_session_factory()()
     try:
         companies = db.query(Company).all()
         if signal_type == SignalType.JOB_POSTING_VELOCITY.value:
@@ -312,7 +312,7 @@ def run_signal_collector(signal_type: str):
 
 @celery_app.task(name="app.services.nadir_agent.run_exit_monitor")
 def run_exit_monitor_task():
-    db = SessionLocal()
+    db = _get_session_factory()()
     try:
         actions = run_exit_monitor(db)
         logger.info("Exit monitor complete: %d actions", len(actions))
@@ -324,7 +324,7 @@ def run_exit_monitor_task():
 
 @celery_app.task(name="app.services.nadir_agent.refresh_universe")
 def refresh_universe():
-    db = SessionLocal()
+    db = _get_session_factory()()
     try:
         new_count = sync_universe(db)
         logger.info("Universe refresh complete: %d new companies", new_count)

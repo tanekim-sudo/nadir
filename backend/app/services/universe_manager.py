@@ -10,7 +10,7 @@ import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 
-from app.db.session import SessionLocal
+from app.db.session import _get_session_factory
 from app.models.company import Company
 
 logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ def sync_universe(db: Session | None = None) -> int:
     """Sync tickers into companies table. Returns count of new companies added."""
     close_db = False
     if db is None:
-        db = SessionLocal()
+        db = _get_session_factory()()
         close_db = True
 
     try:
