@@ -1,6 +1,7 @@
 """
-Exit Monitor — runs daily at 4:30pm ET after market close.
+Exit Monitor — runs daily at 9:00am ET.
 Checks all open positions against exit conditions.
+GRR is the primary post-entry falsification signal.
 """
 import logging
 from datetime import datetime, timezone
@@ -14,13 +15,14 @@ from app.models.company import Company
 from app.models.enums import AlertPriority, AlertType, PositionStatus, SignalType
 from app.models.nadir_signal import NadirSignal
 from app.models.position import Position
+from app.services.signal_collectors import collect_grr_for_monitoring
 from app.services.trade_executor import TradeExecutor
 
 logger = logging.getLogger(__name__)
 
 
 def run_exit_monitor(db: Session) -> List[dict]:
-    """Check all open positions against exit conditions. Returns list of actions taken."""
+    """Check all open positions against exit conditions."""
     executor = TradeExecutor()
     open_positions = (
         db.query(Position)
@@ -43,16 +45,22 @@ def run_exit_monitor(db: Session) -> List[dict]:
 
         days_held = (datetime.now(timezone.utc) - pos.entry_date).days if pos.entry_date else 0
 
-        # CHECK 1 — Falsification (auto-exit)
+        # CHECK 1 — GRR Falsification (auto-exit)
+        # GRR is the most important ongoing monitoring signal after entry
         if pos.falsification_conditions:
             grr_floor = pos.falsification_conditions.get("grr_floor", 0.85)
             latest_grr = (
                 db.query(NadirSignal)
                 .filter(NadirSignal.company_id == pos.company_id)
-                .filter(NadirSignal.signal_type == SignalType.GRR_STABILITY.value)
+                .filter(NadirSignal.signal_type == SignalType.GRR_MONITORING.value)
                 .order_by(NadirSignal.last_updated.desc())
                 .first()
             )
+
+            # If no GRR data yet, try to collect it
+            if not latest_grr:
+                latest_grr = collect_grr_for_monitoring(db, company)
+
             if latest_grr and latest_grr.current_value and float(latest_grr.current_value) < grr_floor:
                 order, err = executor.execute_exit(pos.ticker, pos.shares, "GRR_FALSIFICATION")
                 pos.status = PositionStatus.CLOSED_FALSIFIED.value
@@ -66,7 +74,10 @@ def run_exit_monitor(db: Session) -> List[dict]:
                 alert = Alert(
                     company_id=pos.company_id,
                     alert_type=AlertType.FALSIFICATION_DETECTED.value,
-                    alert_text=f"GRR fell to {float(latest_grr.current_value)*100:.1f}% below floor of {grr_floor*100:.0f}%. Position auto-closed.",
+                    alert_text=(
+                        f"GRR fell to {float(latest_grr.current_value)*100:.1f}% "
+                        f"below floor of {grr_floor*100:.0f}%. Position auto-closed."
+                    ),
                     priority=AlertPriority.CRITICAL.value,
                 )
                 db.add(alert)
@@ -96,7 +107,10 @@ def run_exit_monitor(db: Session) -> List[dict]:
             alert = Alert(
                 company_id=pos.company_id,
                 alert_type=AlertType.REHABILITATION_SIGNAL.value,
-                alert_text=f"{pos.ticker} short interest dropped to {float(latest_short.current_value)*100:.1f}%. Consider trimming 30-50%.",
+                alert_text=(
+                    f"{pos.ticker} short interest dropped to "
+                    f"{float(latest_short.current_value)*100:.1f}%. Consider trimming 30-50%."
+                ),
                 priority=AlertPriority.MEDIUM.value,
             )
             db.add(alert)
@@ -116,7 +130,7 @@ def run_exit_monitor(db: Session) -> List[dict]:
             alert = Alert(
                 company_id=pos.company_id,
                 alert_type=AlertType.STOP_LOSS_TRIGGERED.value,
-                alert_text=f"{pos.ticker} down {current_return*100:.1f}% — stop loss triggered. Position auto-closed.",
+                alert_text=f"{pos.ticker} down {current_return*100:.1f}% — stop loss triggered.",
                 priority=AlertPriority.CRITICAL.value,
             )
             db.add(alert)

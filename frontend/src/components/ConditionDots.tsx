@@ -1,6 +1,6 @@
 import clsx from "clsx";
 
-const SIGNAL_LABELS = ["SI", "AS", "IB", "GRR", "ML"];
+const SIGNAL_LABELS = ["SI", "AS", "IB", "JPV", "SQ"];
 
 export default function ConditionDots({ met }: { met: number }) {
   return (

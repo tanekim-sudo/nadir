@@ -34,6 +34,6 @@ class CompanyOut(CompanyBase):
 
 class CompanyDetail(CompanyOut):
     signals: list = []
-    belief_layers: list = []
+    belief_nodes: list = []
     positions: list = []
     alerts: list = []

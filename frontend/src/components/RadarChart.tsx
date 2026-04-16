@@ -9,8 +9,21 @@ import {
 } from "recharts";
 import type { Signal } from "@/lib/api";
 
-const SIGNAL_ORDER = ["SHORT_INTEREST", "ANALYST_SENTIMENT", "INSIDER_BUYING", "GRR_STABILITY", "MORAL_LANGUAGE"];
-const SIGNAL_SHORT = { SHORT_INTEREST: "Short Int.", ANALYST_SENTIMENT: "Analyst Sell", INSIDER_BUYING: "Insider Buy", GRR_STABILITY: "GRR", MORAL_LANGUAGE: "Moral Lang." };
+const SIGNAL_ORDER = [
+  "SHORT_INTEREST",
+  "ANALYST_SENTIMENT",
+  "INSIDER_BUYING",
+  "JOB_POSTING_VELOCITY",
+  "SQUEEZE_PROBABILITY",
+];
+
+const SIGNAL_SHORT: Record<string, string> = {
+  SHORT_INTEREST: "Short Int.",
+  ANALYST_SENTIMENT: "Analyst Sell",
+  INSIDER_BUYING: "Insider Buy",
+  JOB_POSTING_VELOCITY: "Job Post.",
+  SQUEEZE_PROBABILITY: "Squeeze",
+};
 
 export default function SignalRadar({ signals }: { signals: Signal[] }) {
   const signalMap = new Map(signals.map((s) => [s.signal_type, s]));
@@ -19,9 +32,9 @@ export default function SignalRadar({ signals }: { signals: Signal[] }) {
     const s = signalMap.get(type);
     const value = s?.current_value ?? 0;
     const threshold = s?.threshold ? Number(s.threshold) : 1;
-    const normalized = Math.min((Number(value) / threshold) * 100, 100);
+    const normalized = Math.min((Math.abs(Number(value)) / Math.abs(threshold)) * 100, 100);
     return {
-      subject: (SIGNAL_SHORT as any)[type] || type,
+      subject: SIGNAL_SHORT[type] || type,
       value: Math.round(normalized),
       met: s?.condition_met ? 100 : 0,
     };

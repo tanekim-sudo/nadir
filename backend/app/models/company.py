@@ -12,7 +12,12 @@ from app.models.enums import SystemState
 
 if TYPE_CHECKING:
     from app.models.alert import Alert
-    from app.models.belief_stack import BeliefStack
+    from app.models.belief_stack import (
+        BeliefStackNode,
+        DCFDecomposition,
+        JobPostingSignal,
+        SqueezeProbabilitySignal,
+    )
     from app.models.nadir_signal import NadirSignal
     from app.models.position import Position
     from app.models.prediction import Prediction
@@ -45,8 +50,17 @@ class Company(Base):
     signals: Mapped[List["NadirSignal"]] = relationship(
         "NadirSignal", back_populates="company", cascade="all, delete-orphan"
     )
-    belief_layers: Mapped[List["BeliefStack"]] = relationship(
-        "BeliefStack", back_populates="company", cascade="all, delete-orphan"
+    belief_nodes: Mapped[List["BeliefStackNode"]] = relationship(
+        "BeliefStackNode", back_populates="company", cascade="all, delete-orphan"
+    )
+    dcf_decompositions: Mapped[List["DCFDecomposition"]] = relationship(
+        "DCFDecomposition", back_populates="company", cascade="all, delete-orphan"
+    )
+    job_posting_signals: Mapped[List["JobPostingSignal"]] = relationship(
+        "JobPostingSignal", back_populates="company", cascade="all, delete-orphan"
+    )
+    squeeze_signals: Mapped[List["SqueezeProbabilitySignal"]] = relationship(
+        "SqueezeProbabilitySignal", back_populates="company", cascade="all, delete-orphan"
     )
     predictions: Mapped[List["Prediction"]] = relationship(
         "Prediction", back_populates="company", cascade="all, delete-orphan"

@@ -1,5 +1,4 @@
 from typing import List
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -8,7 +7,7 @@ from app.db import get_db
 from app.models.company import Company
 from app.models.nadir_signal import NadirSignal
 from app.schemas.signal import SignalOut
-from app.services.signal_collectors import run_all_collectors
+from app.services.signal_collectors import run_daily_collectors
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])
 
@@ -19,7 +18,6 @@ def get_signals(ticker: str, db: Session = Depends(get_db)):
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    # Latest signal of each type
     from sqlalchemy import func
     subq = (
         db.query(
@@ -63,5 +61,5 @@ def refresh_signals(ticker: str, db: Session = Depends(get_db)):
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    run_all_collectors(db, [company])
+    run_daily_collectors(db, [company])
     return {"status": "refreshed", "ticker": ticker.upper()}

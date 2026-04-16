@@ -71,6 +71,7 @@ export default function PositionsPage() {
               <th className="table-header">Days</th>
               <th className="table-header">P(Win)</th>
               <th className="table-header">Kelly</th>
+              <th className="table-header">GRR</th>
               <th className="table-header">Status</th>
               <th className="table-header">Actions</th>
             </tr>
@@ -89,6 +90,11 @@ export default function PositionsPage() {
                 </td>
                 <td className="table-cell tabular-nums">{p.p_win ? `${(Number(p.p_win) * 100).toFixed(0)}%` : "—"}</td>
                 <td className="table-cell tabular-nums">{p.kelly_fraction ? `${(Number(p.kelly_fraction) * 100).toFixed(1)}%` : "—"}</td>
+                <td className="table-cell text-xs tabular-nums">
+                  {p.falsification_conditions?.grr_floor
+                    ? <span className="text-gray-400">Floor: {(p.falsification_conditions.grr_floor * 100).toFixed(0)}%</span>
+                    : "—"}
+                </td>
                 <td className="table-cell">
                   <span className={clsx("badge", p.pending_approval ? "badge-critical" : "badge-success")}>
                     {p.pending_approval ? "PENDING" : "OPEN"}
@@ -102,7 +108,7 @@ export default function PositionsPage() {
               </tr>
             ))}
             {!openPositions?.length && (
-              <tr><td colSpan={9} className="table-cell text-center text-gray-500">No open positions</td></tr>
+              <tr><td colSpan={10} className="table-cell text-center text-gray-500">No open positions</td></tr>
             )}
           </tbody>
         </table>

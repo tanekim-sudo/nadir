@@ -1,22 +1,21 @@
 """
-Five signal collectors for the NADIR system.
-Each writes to the nadir_signals table (append-only for history).
+Signal collectors for the NADIR system.
+Detection signals: Short Interest, Analyst Sentiment, Insider Buying.
+GRR and Moral Language are REMOVED from detection.
+Job Posting Velocity and Squeeze Probability are in their own modules.
 """
-import json
 import logging
 import math
 import time
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 
-from app.core.claude import call_haiku, parse_json_response
 from app.core.config import get_settings
-from app.db.session import SessionLocal
 from app.models.company import Company
 from app.models.enums import SignalType
 from app.models.nadir_signal import NadirSignal
@@ -30,7 +29,7 @@ SEC_HEADERS = {
     "User-Agent": "NADIR-Research-Bot/1.0 (investment research; nadir@example.com)",
     "Accept": "application/json",
 }
-EDGAR_DELAY = 0.12  # SEC: 10 req/s max
+EDGAR_DELAY = 0.12
 
 
 # ─────────────────────────────────────────────────
@@ -90,7 +89,10 @@ def collect_short_interest(db: Session, company: Company) -> Optional[NadirSigna
                 previous_value=prev,
                 threshold=Decimal("0.20"),
                 condition_met=short_float > Decimal("0.20"),
-                raw_data={"short_float": float(short_float), "borrow_rate": float(borrow_rate) if borrow_rate else None},
+                raw_data={
+                    "short_float": float(short_float),
+                    "borrow_rate": float(borrow_rate) if borrow_rate else None,
+                },
                 source="finviz,iborrowdesk",
             )
             db.add(signal)
@@ -103,7 +105,6 @@ def collect_short_interest(db: Session, company: Company) -> Optional[NadirSigna
 
 def finalize_short_interest_universe(db: Session):
     """After collecting all tickers, mark borrow_rate top-20% condition."""
-    from sqlalchemy import desc
     recent_signals = (
         db.query(NadirSignal)
         .filter(NadirSignal.signal_type == SignalType.SHORT_INTEREST.value)
@@ -130,29 +131,14 @@ def finalize_short_interest_universe(db: Session):
 
 
 # ─────────────────────────────────────────────────
-# SIGNAL 2: Analyst Sentiment + Moral Language
+# SIGNAL 2: Analyst Sentiment (no moral language)
 # ─────────────────────────────────────────────────
 
-MORAL_LANGUAGE_PROMPT = """Score this analyst report on a scale of 0-10 for moral condemnation language. Moral condemnation language frames the company's situation as deserved punishment, inevitable reckoning, or trust violation rather than as a business challenge requiring financial analysis.
-
-Specific language to detect: deserved, finally, reckless, credibility destroyed, trust violated, caught up with them, paying the price, inevitable collapse, management destroyed value, shareholders betrayed, long overdue, accountability moment, house of cards.
-
-Return ONLY valid JSON in this exact format:
-{"score": <integer 0-10>, "examples": ["<string>", "<string>"], "classification": "<analytical|negative_analytical|moral_condemnation>", "reasoning": "<one sentence>"}
-
-Report text:
-{report_text}"""
-
-
-def collect_analyst_sentiment(db: Session, company: Company) -> Tuple[Optional[NadirSignal], Optional[NadirSignal]]:
-    """Collect analyst sentiment from Polygon + moral language scoring."""
+def collect_analyst_sentiment(db: Session, company: Company) -> Optional[NadirSignal]:
+    """Collect analyst sentiment from Polygon. Condition: sell_pct > 0.70."""
     settings = get_settings()
-    sentiment_signal = None
-    moral_signal = None
-
     try:
         with httpx.Client() as client:
-            # Analyst ratings from Polygon
             buy_count = hold_count = sell_count = 0
             try:
                 url = f"https://api.polygon.io/v3/reference/tickers/{company.ticker}/ratings"
@@ -170,81 +156,30 @@ def collect_analyst_sentiment(db: Session, company: Company) -> Tuple[Optional[N
             total = buy_count + hold_count + sell_count
             sell_pct = Decimal(str(sell_count / total)) if total > 0 else Decimal(0)
 
-            # Moral language scoring via simulated analyst report scraping
-            moral_scores: List[float] = []
-            report_texts = _fetch_analyst_report_snippets(client, company.ticker)
-
-            for text in report_texts[:5]:
-                try:
-                    prompt = MORAL_LANGUAGE_PROMPT.replace("{report_text}", text[:3000])
-                    result = call_haiku(prompt)
-                    parsed = parse_json_response(result)
-                    if "score" in parsed:
-                        moral_scores.append(float(parsed["score"]))
-                except Exception as e:
-                    logger.warning("Moral language scoring failed: %s", e)
-
-            avg_moral = Decimal(str(sum(moral_scores) / len(moral_scores))) if moral_scores else Decimal(0)
-
-            prev_sent = _get_previous_signal(db, company.id, SignalType.ANALYST_SENTIMENT)
-            sentiment_signal = NadirSignal(
+            prev = _get_previous_signal(db, company.id, SignalType.ANALYST_SENTIMENT)
+            signal = NadirSignal(
                 company_id=company.id,
                 signal_type=SignalType.ANALYST_SENTIMENT.value,
                 current_value=sell_pct,
-                previous_value=prev_sent,
+                previous_value=prev,
                 threshold=Decimal("0.70"),
-                condition_met=sell_pct > Decimal("0.70") and avg_moral > Decimal("6.0"),
+                condition_met=sell_pct > Decimal("0.70"),
                 raw_data={
-                    "buy_count": buy_count, "hold_count": hold_count, "sell_count": sell_count,
-                    "sell_pct": float(sell_pct), "avg_moral_score": float(avg_moral),
-                    "moral_scores": moral_scores,
+                    "buy_count": buy_count, "hold_count": hold_count,
+                    "sell_count": sell_count, "sell_pct": float(sell_pct),
                 },
-                source="polygon,seekingalpha",
+                source="polygon",
             )
-            db.add(sentiment_signal)
-
-            # Separate moral language signal record
-            prev_moral = _get_previous_signal(db, company.id, SignalType.MORAL_LANGUAGE)
-            moral_signal = NadirSignal(
-                company_id=company.id,
-                signal_type=SignalType.MORAL_LANGUAGE.value,
-                current_value=avg_moral,
-                previous_value=prev_moral,
-                threshold=Decimal("6.0"),
-                condition_met=avg_moral > Decimal("6.0"),
-                raw_data={"scores": moral_scores, "avg_score": float(avg_moral)},
-                source="seekingalpha,claude",
-            )
-            db.add(moral_signal)
+            db.add(signal)
+            return signal
 
     except Exception as e:
         logger.error("Analyst sentiment collection failed for %s: %s", company.ticker, e)
-
-    return sentiment_signal, moral_signal
-
-
-def _fetch_analyst_report_snippets(client: httpx.Client, ticker: str) -> List[str]:
-    """Fetch recent analyst report text snippets. Falls back to news headlines."""
-    snippets = []
-    try:
-        settings = get_settings()
-        url = f"https://api.polygon.io/v2/reference/news"
-        resp = client.get(url, params={
-            "ticker": ticker, "limit": 5, "apiKey": settings.polygon_api_key,
-        }, timeout=15)
-        if resp.status_code == 200:
-            data = resp.json()
-            for article in data.get("results", []):
-                text = article.get("description", "") or article.get("title", "")
-                if text:
-                    snippets.append(text)
-    except Exception as e:
-        logger.debug("News fetch failed for %s: %s", ticker, e)
-    return snippets
+        return None
 
 
 # ─────────────────────────────────────────────────
-# SIGNAL 3: Insider Buying
+# SIGNAL 3: Insider Buying (unchanged)
 # ─────────────────────────────────────────────────
 
 def collect_insider_buying(db: Session, company: Company) -> Optional[NadirSignal]:
@@ -279,7 +214,6 @@ def collect_insider_buying(db: Session, company: Company) -> Optional[NadirSigna
                 for filing in filings[:30]:
                     try:
                         source = filing.get("_source", {})
-                        # Skip 10b5-1 plan transactions
                         display = source.get("display_names", [])
                         file_description = source.get("file_description", "")
                         if "10b5-1" in str(display) + str(file_description):
@@ -292,7 +226,6 @@ def collect_insider_buying(db: Session, company: Company) -> Optional[NadirSigna
                         if file_date:
                             distinct_dates.add(file_date[:10])
 
-                        # Estimate value from filing metadata
                         est_value = Decimal("50000")
                         total_value += est_value
 
@@ -335,7 +268,7 @@ def collect_insider_buying(db: Session, company: Company) -> Optional[NadirSigna
 
 
 # ─────────────────────────────────────────────────
-# SIGNAL 4: GRR Stability
+# GRR — POST-ENTRY MONITORING ONLY (not detection)
 # ─────────────────────────────────────────────────
 
 GRR_PROMPT = """Extract gross revenue retention or the closest available retention metric from this SEC filing text.
@@ -351,8 +284,10 @@ Filing text:
 {filing_text}"""
 
 
-def collect_grr_stability(db: Session, company: Company) -> Optional[NadirSignal]:
-    """Extract GRR from most recent 10-Q/10-K filing."""
+def collect_grr_for_monitoring(db: Session, company: Company) -> Optional[NadirSignal]:
+    """Extract GRR from most recent 10-Q/10-K. Post-entry monitoring only."""
+    from app.core.claude import call_haiku, parse_json_response
+
     try:
         filing_text = _fetch_latest_filing(company.ticker)
         if not filing_text:
@@ -366,51 +301,21 @@ def collect_grr_stability(db: Session, company: Company) -> Optional[NadirSignal
             return None
 
         grr_value = Decimal(str(parsed["value"]))
-        confidence = parsed.get("confidence", "low")
-        is_exact = parsed.get("is_exact_grr", False)
 
-        # Calculate stability from historical signals
-        historical = (
-            db.query(NadirSignal)
-            .filter(NadirSignal.company_id == company.id)
-            .filter(NadirSignal.signal_type == SignalType.GRR_STABILITY.value)
-            .order_by(NadirSignal.last_updated.desc())
-            .limit(4)
-            .all()
-        )
-
-        grr_values = [float(h.current_value) for h in historical if h.current_value]
-        trailing_avg = sum(grr_values) / len(grr_values) if grr_values else float(grr_value)
-        trailing_std = (
-            (sum((v - trailing_avg) ** 2 for v in grr_values) / len(grr_values)) ** 0.5
-            if len(grr_values) > 1
-            else 0.0
-        )
-        is_stable = abs(float(grr_value) - trailing_avg) < 0.02
-
-        condition = (
-            grr_value > Decimal("0.88")
-            and is_stable
-            and confidence != "low"
-        )
-
-        prev = _get_previous_signal(db, company.id, SignalType.GRR_STABILITY)
+        prev = _get_previous_signal(db, company.id, SignalType.GRR_MONITORING)
         signal = NadirSignal(
             company_id=company.id,
-            signal_type=SignalType.GRR_STABILITY.value,
+            signal_type=SignalType.GRR_MONITORING.value,
             current_value=grr_value,
             previous_value=prev,
-            threshold=Decimal("0.88"),
-            condition_met=condition,
+            threshold=Decimal("0.85"),
+            condition_met=False,  # not a detection signal
             raw_data={
                 "metric_found": parsed.get("metric_found", ""),
-                "is_exact_grr": is_exact,
+                "is_exact_grr": parsed.get("is_exact_grr", False),
                 "period": parsed.get("period", ""),
                 "excerpt": parsed.get("excerpt", ""),
-                "confidence": confidence,
-                "trailing_4q_avg": trailing_avg,
-                "trailing_4q_std": trailing_std,
-                "is_stable": is_stable,
+                "confidence": parsed.get("confidence", "low"),
             },
             source="sec_edgar,claude",
         )
@@ -418,7 +323,7 @@ def collect_grr_stability(db: Session, company: Company) -> Optional[NadirSignal
         return signal
 
     except Exception as e:
-        logger.error("GRR collection failed for %s: %s", company.ticker, e)
+        logger.error("GRR monitoring collection failed for %s: %s", company.ticker, e)
         return None
 
 
@@ -476,20 +381,16 @@ def _get_previous_signal(db: Session, company_id, signal_type: SignalType) -> Op
     return prev[0] if prev else None
 
 
-def run_all_collectors(db: Session, companies: List[Company], signal_type: Optional[str] = None):
-    """Run specified (or all) signal collectors for a list of companies."""
+def run_daily_collectors(db: Session, companies: List[Company], signal_type: Optional[str] = None):
+    """Run the 3 daily detection signal collectors (SI, AS, IB)."""
     for company in companies:
         try:
             if signal_type is None or signal_type == SignalType.SHORT_INTEREST.value:
                 collect_short_interest(db, company)
-            if signal_type is None or signal_type in (
-                SignalType.ANALYST_SENTIMENT.value, SignalType.MORAL_LANGUAGE.value
-            ):
+            if signal_type is None or signal_type == SignalType.ANALYST_SENTIMENT.value:
                 collect_analyst_sentiment(db, company)
             if signal_type is None or signal_type == SignalType.INSIDER_BUYING.value:
                 collect_insider_buying(db, company)
-            if signal_type is None or signal_type == SignalType.GRR_STABILITY.value:
-                collect_grr_stability(db, company)
             db.flush()
         except Exception as e:
             logger.error("Signal collection failed for %s: %s", company.ticker, e)

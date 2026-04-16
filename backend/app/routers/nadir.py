@@ -8,7 +8,7 @@ from app.models.company import Company
 from app.models.enums import SystemState
 from app.models.position import Position
 from app.schemas.company import CompanyOut
-from app.services.belief_stack_builder import build_belief_stack
+from app.services.belief_stack_engine import run_belief_stack_engine
 from app.services.nadir_validator import validate_nadir
 from app.services.thesis_generator import generate_thesis
 
@@ -53,7 +53,6 @@ def get_thesis(ticker: str, db: Session = Depends(get_db)):
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    # Check if position already has thesis
     position = (
         db.query(Position)
         .filter(Position.company_id == company.id)
@@ -64,7 +63,6 @@ def get_thesis(ticker: str, db: Session = Depends(get_db)):
     if position and position.thesis:
         return position.thesis
 
-    # Generate new thesis
     validation = validate_nadir(db, company)
     if not validation:
         raise HTTPException(status_code=500, detail="Validation required before thesis generation")

@@ -7,13 +7,17 @@ from sqlalchemy import engine_from_config, pool
 from app.db.session import Base
 from app.models import (  # noqa: F401
     Alert,
-    BeliefStack,
+    BeliefStackNode,
+    DCFDecomposition,
     Company,
+    JobPostingSignal,
     NadirSignal,
+    NodeSignalMapping,
     Position,
     Prediction,
     ScanHistory,
     SignalAccuracy,
+    SqueezeProbabilitySignal,
 )
 
 config = context.config

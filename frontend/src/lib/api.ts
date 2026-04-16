@@ -38,11 +38,11 @@ export const validateCompany = (ticker: string) =>
 export const getThesis = (ticker: string) =>
   fetchApi(`/api/nadir/${ticker}/thesis`);
 
-// Beliefs
-export const getBeliefs = (ticker: string) =>
-  fetchApi<BeliefLayer[]>(`/api/beliefs/${ticker}`);
-export const refreshBeliefs = (ticker: string) =>
-  fetchApi<BeliefLayer[]>(`/api/beliefs/${ticker}/refresh`, { method: "POST" });
+// Beliefs (v2 — DCF decomposition tree)
+export const getBeliefStack = (ticker: string) =>
+  fetchApi<BeliefStackSummary>(`/api/beliefs/${ticker}`);
+export const refreshBeliefStack = (ticker: string) =>
+  fetchApi<BeliefStackSummary>(`/api/beliefs/${ticker}/refresh`, { method: "POST" });
 
 // Positions
 export const getPositions = (status?: string) =>
@@ -86,7 +86,7 @@ export const getKellyCalibration = () => fetchApi("/api/analytics/kelly");
 // Health
 export const getHealth = () => fetchApi<{ status: string; mode: string }>("/api/health");
 
-// Types
+// ─── Types ───────────────────────────────────────
 export interface Company {
   id: string;
   ticker: string;
@@ -103,7 +103,7 @@ export interface Company {
 
 export interface CompanyDetail extends Company {
   signals: Signal[];
-  belief_layers: BeliefLayer[];
+  belief_nodes: BeliefNode[];
   positions: Position[];
   alerts: Alert[];
 }
@@ -121,18 +121,49 @@ export interface Signal {
   last_updated: string;
 }
 
-export interface BeliefLayer {
+export interface BeliefNode {
   id: string;
   company_id: string;
-  layer: string;
-  assumption_text: string;
+  node_id: string;
+  node_name: string;
+  parent_node: string | null;
   market_implied_value: string;
-  variant_value: string;
-  confidence_pct: number | null;
-  confirming_signals: number;
-  contradicting_signals: number;
-  net_direction: string;
+  market_implied_label: string;
+  evidence_value: string;
+  evidence_label: string;
+  evidence_direction: string;
+  evidence_confidence: string;
+  gap_magnitude: number | null;
+  conviction_score: number | null;
+  evidence_sources: Record<string, any> | null;
   last_updated: string;
+}
+
+export interface DCFData {
+  id: string;
+  company_id: string;
+  scan_date: string;
+  current_ev: number | null;
+  current_price: number | null;
+  shares: number | null;
+  debt: number | null;
+  cash: number | null;
+  ttm_revenue: number | null;
+  ttm_gross_profit: number | null;
+  ttm_ebit: number | null;
+  implied_year1_growth: number | null;
+  implied_terminal_margin: number | null;
+  implied_wacc: number | null;
+  ev_revenue_multiple: number | null;
+  solver_converged: boolean;
+  solver_error: number | null;
+}
+
+export interface BeliefStackSummary {
+  nodes: BeliefNode[];
+  dcf: DCFData | null;
+  primary_mispricing_node: string | null;
+  primary_conviction: number | null;
 }
 
 export interface Position {

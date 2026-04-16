@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from app.models.company import Company
-from app.models.enums import SignalType, SystemState
+from app.models.enums import DETECTION_SIGNALS, SignalType, SystemState
 from app.models.nadir_signal import NadirSignal
 
 
@@ -34,7 +34,7 @@ def test_normal_state_no_conditions(db, sample_company):
 
 
 def test_watch_state_three_conditions(db, sample_company):
-    """Company with 3 conditions transitions to WATCH."""
+    """Company with 3 detection conditions transitions to WATCH."""
     from app.services.nadir_agent import _update_company_states
 
     _add_signal(db, sample_company.id, SignalType.SHORT_INTEREST.value, 0.25, 0.20, True)
@@ -48,11 +48,11 @@ def test_watch_state_three_conditions(db, sample_company):
     assert sample_company.system_state == SystemState.WATCH.value
 
 
-def test_nadir_complete_all_conditions(db, sample_company):
-    """Company with all 5 conditions transitions to NADIR_COMPLETE."""
+def test_nadir_complete_all_five_detection_signals(db, sample_company):
+    """Company with all 5 detection signals transitions to NADIR_COMPLETE."""
     from app.services.nadir_agent import _update_company_states
 
-    for sig_type in SignalType:
+    for sig_type in DETECTION_SIGNALS:
         _add_signal(db, sample_company.id, sig_type.value, 1.0, 0.5, True)
     db.commit()
 
@@ -60,6 +60,19 @@ def test_nadir_complete_all_conditions(db, sample_company):
     db.refresh(sample_company)
     assert sample_company.conditions_met == 5
     assert sample_company.system_state == SystemState.NADIR_COMPLETE.value
+
+
+def test_grr_monitoring_does_not_count_as_detection(db, sample_company):
+    """GRR_MONITORING should not count toward detection conditions."""
+    from app.services.nadir_agent import _update_company_states
+
+    _add_signal(db, sample_company.id, SignalType.GRR_MONITORING.value, 0.92, 0.85, True)
+    _add_signal(db, sample_company.id, SignalType.SHORT_INTEREST.value, 0.25, 0.20, True)
+    db.commit()
+
+    _update_company_states(db)
+    db.refresh(sample_company)
+    assert sample_company.conditions_met == 1
 
 
 def test_condition_not_met_keeps_normal(db, sample_company):
@@ -74,6 +87,19 @@ def test_condition_not_met_keeps_normal(db, sample_company):
     db.refresh(sample_company)
     assert sample_company.conditions_met == 0
     assert sample_company.system_state == SystemState.NORMAL.value
+
+
+def test_new_signals_included_in_detection(db, sample_company):
+    """Job posting velocity and squeeze probability count as detection signals."""
+    from app.services.nadir_agent import _update_company_states
+
+    _add_signal(db, sample_company.id, SignalType.JOB_POSTING_VELOCITY.value, 0.05, -0.10, True)
+    _add_signal(db, sample_company.id, SignalType.SQUEEZE_PROBABILITY.value, 0.72, 0.65, True)
+    db.commit()
+
+    _update_company_states(db)
+    db.refresh(sample_company)
+    assert sample_company.conditions_met == 2
 
 
 def test_state_transition_creates_alert(db, sample_company):
@@ -97,7 +123,7 @@ def test_nadir_complete_creates_critical_alert(db, sample_company):
     from app.models.alert import Alert
     from app.services.nadir_agent import _update_company_states
 
-    for sig_type in SignalType:
+    for sig_type in DETECTION_SIGNALS:
         _add_signal(db, sample_company.id, sig_type.value, 1.0, 0.5, True)
     db.commit()
 

@@ -1,4 +1,4 @@
-"""Tests for belief stack builder and validator output formats."""
+"""Tests for belief stack engine and validator output formats."""
 from unittest.mock import patch
 
 import pytest
@@ -55,39 +55,59 @@ def test_validation_result_format():
         assert field in mock_response, f"Missing field: {field}"
 
 
-def test_belief_stack_format():
-    """Ensure belief stack response has all required layers."""
-    mock_response = {
-        "surface": {
-            "assumption": "test", "market_implied_value": "test",
-            "appears_correct": False, "confirming_signal": "test",
-            "contradicting_signal": "test",
-        },
-        "financial": {
-            "assumption": "test", "market_implied_value": "test",
-            "appears_correct": True, "confirming_signal": "test",
-            "contradicting_signal": "test",
-        },
-        "structural": {
-            "assumption": "test", "market_implied_value": "test",
-            "appears_correct": True, "confirming_signal": "test",
-            "contradicting_signal": "test",
-        },
-        "axiom": {
-            "assumption": "test", "market_implied_value": "test",
-            "appears_correct": False, "confirming_signal": "test",
-            "contradicting_signal": "test",
-        },
-        "weakest_node": "surface",
-        "weakest_node_reasoning": "test",
-        "variant_view_summary": "test",
+def test_dcf_decomposition_format():
+    """Ensure DCF solver output has required fields."""
+    mock_result = {
+        "current_ev": 5_000_000_000,
+        "implied_year1_growth": 0.15,
+        "implied_terminal_margin": 0.22,
+        "implied_wacc": 0.10,
+        "solver_converged": True,
+        "solver_error": 1234.5,
+        "ev_revenue_multiple": 8.5,
     }
+    required = [
+        "current_ev", "implied_year1_growth", "implied_terminal_margin",
+        "implied_wacc", "solver_converged",
+    ]
+    for field in required:
+        assert field in mock_result, f"Missing field: {field}"
+    assert 0 <= mock_result["implied_terminal_margin"] <= 0.50
+    assert -0.30 <= mock_result["implied_year1_growth"] <= 1.50
 
-    for layer in ["surface", "financial", "structural", "axiom"]:
-        assert layer in mock_response
-        layer_data = mock_response[layer]
-        for field in ["assumption", "market_implied_value", "appears_correct"]:
-            assert field in layer_data, f"Missing {field} in {layer}"
 
-    assert "weakest_node" in mock_response
-    assert mock_response["weakest_node"] in ["surface", "financial", "structural", "axiom"]
+def test_belief_node_evidence_format():
+    """Ensure leaf node evidence scoring has required fields."""
+    mock_node = {
+        "node_id": "A2",
+        "evidence_value": "declining share",
+        "evidence_label": "Market share eroding",
+        "evidence_direction": "BEARISH",
+        "evidence_confidence": "MEDIUM",
+        "gap_magnitude": -0.15,
+        "evidence_sources": ["job posting data", "competitive analysis"],
+    }
+    required = [
+        "node_id", "evidence_value", "evidence_direction",
+        "evidence_confidence", "gap_magnitude",
+    ]
+    for field in required:
+        assert field in mock_node, f"Missing field: {field}"
+    assert mock_node["evidence_direction"] in [
+        "STRONGLY_BULLISH", "BULLISH", "NEUTRAL", "BEARISH", "STRONGLY_BEARISH",
+    ]
+    assert mock_node["evidence_confidence"] in ["HIGH", "MEDIUM", "LOW"]
+
+
+def test_conviction_score_calculation():
+    """Conviction = |gap_magnitude| * confidence_weight."""
+    from app.services.belief_stack_engine import CONFIDENCE_WEIGHTS
+
+    gap = -0.25
+    confidence = "MEDIUM"
+    expected = abs(gap) * CONFIDENCE_WEIGHTS[confidence]
+    assert expected == pytest.approx(0.15)
+
+    gap_high = 0.40
+    expected_high = abs(gap_high) * CONFIDENCE_WEIGHTS["HIGH"]
+    assert expected_high == pytest.approx(0.40)

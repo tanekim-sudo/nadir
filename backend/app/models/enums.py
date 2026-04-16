@@ -13,23 +13,24 @@ class SignalType(str, enum.Enum):
     SHORT_INTEREST = "SHORT_INTEREST"
     ANALYST_SENTIMENT = "ANALYST_SENTIMENT"
     INSIDER_BUYING = "INSIDER_BUYING"
-    GRR_STABILITY = "GRR_STABILITY"
-    MORAL_LANGUAGE = "MORAL_LANGUAGE"
+    JOB_POSTING_VELOCITY = "JOB_POSTING_VELOCITY"
+    SQUEEZE_PROBABILITY = "SQUEEZE_PROBABILITY"
+    # GRR is post-entry monitoring only, not a detection signal
+    GRR_MONITORING = "GRR_MONITORING"
 
 
-class BeliefLayer(str, enum.Enum):
-    SURFACE = "SURFACE"
-    FINANCIAL = "FINANCIAL"
-    STRUCTURAL = "STRUCTURAL"
-    AXIOM = "AXIOM"
-
-
-class NetDirection(str, enum.Enum):
-    STRONGLY_CONFIRMING = "STRONGLY_CONFIRMING"
-    CONFIRMING = "CONFIRMING"
+class EvidenceDirection(str, enum.Enum):
+    STRONGLY_BULLISH = "STRONGLY_BULLISH"
+    BULLISH = "BULLISH"
     NEUTRAL = "NEUTRAL"
-    CONTRADICTING = "CONTRADICTING"
-    STRONGLY_CONTRADICTING = "STRONGLY_CONTRADICTING"
+    BEARISH = "BEARISH"
+    STRONGLY_BEARISH = "STRONGLY_BEARISH"
+
+
+class EvidenceConfidence(str, enum.Enum):
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
 
 
 class OutcomeDirection(str, enum.Enum):
@@ -57,6 +58,7 @@ class AlertType(str, enum.Enum):
     TIME_LIMIT_REACHED = "TIME_LIMIT_REACHED"
     STOP_LOSS_TRIGGERED = "STOP_LOSS_TRIGGERED"
     INSIDER_BUYING_STOPPED = "INSIDER_BUYING_STOPPED"
+    CONVICTION_SHIFT = "CONVICTION_SHIFT"
 
 
 class AlertPriority(str, enum.Enum):
@@ -64,3 +66,13 @@ class AlertPriority(str, enum.Enum):
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     CRITICAL = "CRITICAL"
+
+
+# The 5 detection signals (must all be met for NADIR_COMPLETE)
+DETECTION_SIGNALS = frozenset({
+    SignalType.SHORT_INTEREST,
+    SignalType.ANALYST_SENTIMENT,
+    SignalType.INSIDER_BUYING,
+    SignalType.JOB_POSTING_VELOCITY,
+    SignalType.SQUEEZE_PROBABILITY,
+})

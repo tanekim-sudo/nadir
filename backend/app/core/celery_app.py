@@ -28,33 +28,40 @@ celery_app.conf.update(
 )
 
 celery_app.conf.beat_schedule = {
-    "daily-signal-scan": {
+    # Staged daily pipeline
+    "daily-pipeline": {
         "task": "app.services.nadir_agent.run_daily_pipeline",
-        "schedule": crontab(hour=6, minute=30),
+        "schedule": crontab(hour=6, minute=0),
     },
+    # Individual collectors for ad-hoc scheduling
     "short-interest-collector": {
         "task": "app.services.nadir_agent.run_signal_collector",
-        "schedule": crontab(hour=5, minute=30),
+        "schedule": crontab(hour=6, minute=0),
         "args": ["SHORT_INTEREST"],
+    },
+    "squeeze-probability-collector": {
+        "task": "app.services.nadir_agent.run_signal_collector",
+        "schedule": crontab(hour=6, minute=0),
+        "args": ["SQUEEZE_PROBABILITY"],
     },
     "analyst-sentiment-collector": {
         "task": "app.services.nadir_agent.run_signal_collector",
-        "schedule": crontab(hour=5, minute=45),
+        "schedule": crontab(hour=6, minute=15),
         "args": ["ANALYST_SENTIMENT"],
     },
     "insider-buying-collector": {
         "task": "app.services.nadir_agent.run_signal_collector",
-        "schedule": crontab(hour=6, minute=0),
+        "schedule": crontab(hour=6, minute=15),
         "args": ["INSIDER_BUYING"],
     },
-    "grr-stability-collector": {
+    "job-posting-velocity-collector": {
         "task": "app.services.nadir_agent.run_signal_collector",
-        "schedule": crontab(hour=7, minute=0, day_of_week="sun"),
-        "args": ["GRR_STABILITY"],
+        "schedule": crontab(hour=5, minute=0, day_of_week="mon"),
+        "args": ["JOB_POSTING_VELOCITY"],
     },
     "exit-monitor": {
         "task": "app.services.nadir_agent.run_exit_monitor",
-        "schedule": crontab(hour=16, minute=30),
+        "schedule": crontab(hour=9, minute=0),
     },
     "universe-refresh": {
         "task": "app.services.nadir_agent.refresh_universe",

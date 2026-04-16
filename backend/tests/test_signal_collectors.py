@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.models.company import Company
+from app.models.enums import SignalType
 from app.models.nadir_signal import NadirSignal
 from app.services.signal_collectors import (
     _get_previous_signal,
@@ -14,7 +15,7 @@ from app.services.signal_collectors import (
 
 
 def test_get_previous_signal_none(db, sample_company):
-    result = _get_previous_signal(db, sample_company.id, "SHORT_INTEREST")
+    result = _get_previous_signal(db, sample_company.id, SignalType.SHORT_INTEREST)
     assert result is None
 
 
@@ -29,7 +30,7 @@ def test_get_previous_signal_exists(db, sample_company):
     db.add(signal)
     db.commit()
 
-    result = _get_previous_signal(db, sample_company.id, "SHORT_INTEREST")
+    result = _get_previous_signal(db, sample_company.id, SignalType.SHORT_INTEREST)
     assert result == Decimal("0.25")
 
 
@@ -70,3 +71,16 @@ def test_finalize_short_interest_marks_top_20(db, sample_company):
     signals = db.query(NadirSignal).filter(NadirSignal.signal_type == "SHORT_INTEREST").all()
     top_20_count = sum(1 for s in signals if s.raw_data and s.raw_data.get("in_top_20_borrow"))
     assert top_20_count == 2
+
+
+def test_detection_signals_set():
+    """Verify the 5 detection signals are correctly defined."""
+    from app.models.enums import DETECTION_SIGNALS
+
+    assert len(DETECTION_SIGNALS) == 5
+    assert SignalType.SHORT_INTEREST in DETECTION_SIGNALS
+    assert SignalType.ANALYST_SENTIMENT in DETECTION_SIGNALS
+    assert SignalType.INSIDER_BUYING in DETECTION_SIGNALS
+    assert SignalType.JOB_POSTING_VELOCITY in DETECTION_SIGNALS
+    assert SignalType.SQUEEZE_PROBABILITY in DETECTION_SIGNALS
+    assert SignalType.GRR_MONITORING not in DETECTION_SIGNALS
