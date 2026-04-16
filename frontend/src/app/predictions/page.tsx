@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { createPrediction, getAccuracyStats, getPredictions, resolvePrediction, type Prediction } from "@/lib/api";
+import { createPrediction, getAccuracyStats, getPredictions, resolvePrediction, type Prediction, type AccuracyStats } from "@/lib/api";
 import { useFetch } from "@/lib/hooks";
 import clsx from "clsx";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -34,19 +34,19 @@ export default function PredictionsPage() {
       {showForm && <PredictionForm onCreated={() => { setShowForm(false); reload(); }} />}
 
       {/* Accuracy overview */}
-      {accuracy && (accuracy as any).total_resolved > 0 && (
+      {accuracy && accuracy.total_resolved > 0 && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="card text-center">
             <p className="text-xs uppercase tracking-wider text-gray-400">Accuracy</p>
-            <p className="text-3xl font-bold text-nadir-accent">{(accuracy as any).accuracy_pct}%</p>
+            <p className="text-3xl font-bold text-nadir-accent">{accuracy.accuracy_pct}%</p>
           </div>
           <div className="card text-center">
             <p className="text-xs uppercase tracking-wider text-gray-400">Confirmed</p>
-            <p className="text-3xl font-bold text-emerald-400">{(accuracy as any).confirmed}</p>
+            <p className="text-3xl font-bold text-emerald-400">{accuracy.confirmed}</p>
           </div>
           <div className="card text-center">
             <p className="text-xs uppercase tracking-wider text-gray-400">Denied</p>
-            <p className="text-3xl font-bold text-red-400">{(accuracy as any).denied}</p>
+            <p className="text-3xl font-bold text-red-400">{accuracy.denied}</p>
           </div>
         </div>
       )}

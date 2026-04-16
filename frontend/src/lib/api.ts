@@ -67,7 +67,7 @@ export const resolvePrediction = (id: string, data: PredictionResolve) =>
     method: "PUT",
     body: JSON.stringify(data),
   });
-export const getAccuracyStats = () => fetchApi("/api/predictions/accuracy");
+export const getAccuracyStats = () => fetchApi<AccuracyStats>("/api/predictions/accuracy");
 
 // Alerts
 export const getAlerts = (reviewed = false) =>
@@ -216,6 +216,15 @@ export interface PredictionResolve {
   actual_outcome: string;
   outcome_direction: string;
   notes?: string;
+}
+
+export interface AccuracyStats {
+  total_resolved: number;
+  confirmed: number;
+  denied: number;
+  ambiguous: number;
+  accuracy_pct: number;
+  by_confidence_bucket: Record<string, { predicted_avg: number; actual_rate: number; count: number }>;
 }
 
 export interface Alert {
